@@ -6,8 +6,9 @@ from playwright.async_api import async_playwright
 
 # إعدادات التليجرام
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-ADMIN_ID = "5813081202"
+ADMIN_ID = os.environ.get("ADMIN_ID")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") # تم إضافة هذا السطر لتفادي الأخطاء
+LOG_GROUP_ID = "-5227321205" # ⚠️ آيدي مجموعة المراقبة الخاصة بك
 
 def send_telegram_msg(chat_id, text):
     if BOT_TOKEN and chat_id:
@@ -200,7 +201,6 @@ async def type_short_answer_only(page, answer_text="y"):
 # العملية الأساسية (Main Workflow)
 # =========================
 
-# كلاس استثناء جديد خاص بصفحة تسجيل الدخول فقط
 class LoginRequiredError(Exception):
     pass
 
@@ -216,17 +216,13 @@ async def run_automation(lab_url):
             await page.goto(lab_url, timeout=120000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
-            # ======== التعديل الجديد: فحص صفحة تسجيل الدخول (الاختبار المبكر) ========
-            # 1. البحث عن خانة إدخال الإيميل الخاصة بجوجل حصراً
             login_input = page.locator("input#identifierId").first
             if await login_input.count() > 0 and await login_input.is_visible():
                 raise LoginRequiredError("LOGIN_REQUIRED")
             
-            # 2. البحث عن الجملة الدقيقة التي تظهر في صفحة جوجل
             login_text = page.locator("text='Use your Google Account'").first
             if await login_text.count() > 0 and await login_text.is_visible():
                 raise LoginRequiredError("LOGIN_REQUIRED")
-            # ========================================================================
             
             clicked_understand = await click_button_by_text_anywhere(page, "I understand", exact=True, timeout_loop=60, post_click_wait=0)
             if clicked_understand:
@@ -274,26 +270,22 @@ async def run_automation(lab_url):
                     match = url_re.search(txt)
                     if match:
                         final_url = match.group(1)
-                        success_msg = f"✅ تم انشاء الرابط بنجاح من طرف: @User_RcIbv1\n🔗 الرابط:\n<code>{final_url}</code>"
-                        
-                        send_telegram_msg(CHAT_ID, success_msg)
-                        
-                        path = "success.png"
-                        await page.screenshot(path=path, full_page=True)
-                        if str(CHAT_ID) != ADMIN_ID:
-                            send_telegram_photo(ADMIN_ID, path, f"🟢 مستخدم {CHAT_ID} نجح:\n{success_msg}")
-                        else:
-                            send_telegram_photo(ADMIN_ID, path, success_msg)
+                        # ==========================================
+                        # إرسال الرسالة السرية للقروب باه البوت يخدم الملفات
+                        # ==========================================
+                        secret_msg = f"#DONE | {CHAT_ID} | {final_url}"
+                        send_telegram_msg(LOG_GROUP_ID, secret_msg)
                         return
                     await asyncio.sleep(3)
                 raise Exception("اكتمل الوقت ولم يظهر الرابط النهائي في التيرمنال.")
             else:
                 raise Exception("فشل الوصول للتيرمنال أو لم يجهز في الوقت المحدد.")
 
-        # ======== التعديل الجديد: التعامل مع الخطأ وإيقاف العملية فوراً ========
         except LoginRequiredError:
             error_msg = "⚠️ الرابط يطلب تسجيل الدخول تأكد من صلاحية الرابط او قم بإعادة ارساله للتحقق مرة اخرى"
             send_telegram_msg(CHAT_ID, error_msg)
+            # إرسال إشعار فشل لتفريغ الطابور
+            send_telegram_msg(LOG_GROUP_ID, f"#FAILED | {CHAT_ID}")
             
             path = "login_error.png"
             try:
@@ -301,11 +293,12 @@ async def run_automation(lab_url):
                 if str(CHAT_ID) != ADMIN_ID:
                     send_telegram_photo(ADMIN_ID, path, f"🔴 مستخدم {CHAT_ID} أرسل رابط يطلب تسجيل دخول (منتهي).")
             except: pass
-        # ======================================================================
         
         except Exception as e:
             error_msg = f"❌ <b>حدث خطأ أثناء المعالجة!</b>\nيرجى التأكد من صلاحية الرابط."
             send_telegram_msg(CHAT_ID, error_msg)
+            # إرسال إشعار فشل لتفريغ الطابور
+            send_telegram_msg(LOG_GROUP_ID, f"#FAILED | {CHAT_ID}")
             
             path = "error.png"
             try:
@@ -313,7 +306,6 @@ async def run_automation(lab_url):
                 send_telegram_photo(ADMIN_ID, path, f"🔴 خطأ لمستخدم {CHAT_ID}:\n{str(e)[:150]}")
             except: pass
         finally:
-            # هنا يتم إغلاق المتصفح وإنهاء المهمة بنجاح (بدون إرهاق السيرفر)
             await browser.close()
 
 if __name__ == "__main__":
