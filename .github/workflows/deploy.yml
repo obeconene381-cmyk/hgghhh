@@ -37,5 +37,7 @@ jobs:
           LAB_URL: ${{ github.event.inputs.lab_url }}
           TELEGRAM_CHAT_ID: ${{ github.event.inputs.chat_id }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ADMIN_ID: ${{ secrets.ADMIN_ID }} # 🔒 سحب الآيدي تاعك من الإعدادات المخفية
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          LOG_BOT_TOKEN: ${{ secrets.LOG_BOT_TOKEN }}
+
         run: python main.py
