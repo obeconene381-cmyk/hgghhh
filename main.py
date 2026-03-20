@@ -8,7 +8,7 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") # توكن البوت المساعد
-LOG_CHANNEL_ID = "-100XXXXXXXXXX" # ⚠️ ضع آيدي القناة هنا
+LOG_CHANNEL_ID = "-1003781090454" # ⚠️ ضع آيدي القناة هنا
 
 def send_telegram_msg(chat_id, text):
     if BOT_TOKEN and chat_id:
