@@ -38,10 +38,7 @@ async def click_button_by_text_anywhere(page, text, exact=True, timeout_loop=120
                 for i in range(await btns.count() - 1, -1, -1):
                     b = btns.nth(i)
                     if await b.is_visible() and await b.is_enabled():
-                        await b.scroll_into_view_if_needed(timeout=1000)
-                        await b.click(timeout=3000, force=True)
-                        await _post_click_stabilize()
-                        return True
+                        await b.scroll_into_view_if_needed(timeout=1000); await b.click(timeout=3000, force=True); await _post_click_stabilize(); return True
             except: pass
         await asyncio.sleep(1)
     return False
@@ -54,15 +51,11 @@ async def try_click_terms_checkbox(page):
                 cbs = target.get_by_role("checkbox")
                 for i in range(await cbs.count()):
                     cb = cbs.nth(i)
-                    if await cb.is_visible(): 
-                        await cb.click(timeout=1500, force=True)
-                        return True
+                    if await cb.is_visible(): await cb.click(timeout=1500, force=True); return True
                 locs = target.locator("label, div, span, [role='checkbox']").filter(has_text=terms_regex)
                 for i in range(await locs.count()):
                     el = locs.nth(i)
-                    if await el.is_visible(): 
-                        await el.click(timeout=1500, force=True)
-                        return True
+                    if await el.is_visible(): await el.click(timeout=1500, force=True); return True
             except: pass
         await asyncio.sleep(0.5)
     return False
@@ -70,8 +63,7 @@ async def try_click_terms_checkbox(page):
 async def get_cloudshell_frame(page):
     for _ in range(60):
         for f in page.frames:
-            if "shell.cloud.google.com" in (f.url or "").lower() or "embeddedcloudshell" in (f.url or "").lower(): 
-                return f
+            if "shell.cloud.google.com" in (f.url or "").lower() or "embeddedcloudshell" in (f.url or "").lower(): return f
         await asyncio.sleep(1)
     return None
 
@@ -82,8 +74,7 @@ async def wait_for_cloud_shell_prompt(page, timeout_loop=180):
         if f:
             try:
                 txt = await f.inner_text("body")
-                if any(re.search(pat, txt, re.I | re.M) for pat in prompt_patterns): 
-                    return True
+                if any(re.search(pat, txt, re.I | re.M) for pat in prompt_patterns): return True
             except: pass
         await asyncio.sleep(1)
     return False
@@ -98,20 +89,16 @@ async def focus_terminal_near_prompt(page, timeout_loop=60):
                     if await loc.count() > 0 and await loc.is_visible():
                         await loc.click(timeout=1500, force=True)
                         box = await loc.bounding_box()
-                        if box: 
-                            await page.mouse.click(box["x"] + 40, box["y"] + max(10, box["height"] - 20))
+                        if box: await page.mouse.click(box["x"] + 40, box["y"] + max(10, box["height"] - 20))
                         return True
                 except: pass
         await asyncio.sleep(1)
     return False
 
-# ==========================================
-# 🚀 دوال الطباعة والتيرمنال المطابقة لـ botlast9
-# ==========================================
+# تم استبدال دالة اللصق بالنسخة الموجودة في botlast9 لتفادي الكتابة البطيئة
 async def paste_command_and_run(page, command, timeout_verify=5):
     await focus_terminal_near_prompt(page, timeout_loop=30)
     f = await get_cloudshell_frame(page)
-    
     async def _paste_into_focused():
         try:
             f2 = await get_cloudshell_frame(page)
@@ -129,7 +116,7 @@ async def paste_command_and_run(page, command, timeout_verify=5):
         except Exception:
             pass
         await page.keyboard.insert_text(command)
-
+        
     if f:
         try:
             ta = f.locator("textarea.xterm-helper-textarea").first
@@ -145,11 +132,7 @@ async def paste_command_and_run(page, command, timeout_verify=5):
         await _paste_into_focused()
         
     await asyncio.sleep(0.8)
-    await press_enter_in_terminal(page)
-    return True
-
-async def press_enter_in_terminal(page):
-    f = await get_cloudshell_frame(page)
+    
     try:
         if f:
             try:
@@ -180,26 +163,35 @@ async def type_short_answer_only(page, answer_text="y"):
     await focus_terminal_near_prompt(page, timeout_loop=20)
     f = await get_cloudshell_frame(page)
     try:
-        if f:
-            ta = f.locator("textarea.xterm-helper-textarea").first
-            if await ta.count() > 0:
-                await ta.focus()
-                await asyncio.sleep(0.2)
-                await ta.type(answer_text, delay=50)
-            else:
-                await page.keyboard.insert_text(answer_text)
-        else:
-            await page.keyboard.insert_text(answer_text)
-    except Exception:
-        await page.keyboard.type(answer_text, delay=50)
+        if f and await f.locator("textarea.xterm-helper-textarea").first.count() > 0:
+            await f.locator("textarea.xterm-helper-textarea").first.focus(); await asyncio.sleep(0.2); await f.locator("textarea.xterm-helper-textarea").first.type(answer_text, delay=50)
+        else: await page.keyboard.insert_text(answer_text)
+    except: await page.keyboard.type(answer_text, delay=50)
     await asyncio.sleep(0.4)
     return True
-# ==========================================
 
 class LoginRequiredError(Exception): pass
 
 async def run_automation(lab_url):
     send_telegram_msg(CHAT_ID, "✅ تم بدء العمل في السيرفر، يرجى الانتظار لمدة تتراوح بين 3 إلى 5 دقائق.")
+    
+    # القالب الجديد لأمر النشر
+    deploy_cmd_template = (
+        "gcloud run deploy my-app \\\n"
+        "  --image=docker.io/nkka404/vless-ws:latest \\\n"
+        "  --platform=managed \\\n"
+        "  --allow-unauthenticated \\\n"
+        "  --port=8080 \\\n"
+        "  --cpu=2 \\\n"
+        "  --memory=4Gi \\\n"
+        "  --concurrency=1000 \\\n"
+        "  --timeout=3600 \\\n"
+        "  --min-instances=2 \\\n"
+        "  --max-instances=7 \\\n"
+        "  --execution-environment=gen2 \\\n"
+        "  --cpu-boost \\\n"
+        "  --region={REGION}"
+    )
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--lang=en-US", "--no-sandbox", "--disable-gpu"])
@@ -210,14 +202,11 @@ async def run_automation(lab_url):
             await page.goto(lab_url, timeout=120000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
-            if await page.locator("input#identifierId").first.count() > 0 and await page.locator("input#identifierId").first.is_visible(): 
-                raise LoginRequiredError()
-            if await page.locator("text='Use your Google Account'").first.count() > 0 and await page.locator("text='Use your Google Account'").first.is_visible(): 
-                raise LoginRequiredError()
+            if await page.locator("input#identifierId").first.count() > 0 and await page.locator("input#identifierId").first.is_visible(): raise LoginRequiredError()
+            if await page.locator("text='Use your Google Account'").first.count() > 0 and await page.locator("text='Use your Google Account'").first.is_visible(): raise LoginRequiredError()
             
             clicked_understand = await click_button_by_text_anywhere(page, "I understand", exact=True, timeout_loop=60, post_click_wait=0)
-            if clicked_understand: 
-                await asyncio.sleep(10) 
+            if clicked_understand: await asyncio.sleep(10) 
             
             await try_click_terms_checkbox(page)
             await asyncio.sleep(2)
@@ -227,9 +216,7 @@ async def run_automation(lab_url):
             for sel in ['button[aria-label*="Activate Cloud Shell"]', 'button[title*="Cloud Shell"]']:
                 try:
                     loc = page.locator(sel).first
-                    if await loc.count() > 0 and await loc.is_visible(): 
-                        await loc.click(timeout=3000, force=True)
-                        break
+                    if await loc.count() > 0 and await loc.is_visible(): await loc.click(timeout=3000, force=True); break
                 except: pass
                 
             await asyncio.sleep(5) 
@@ -240,24 +227,26 @@ async def run_automation(lab_url):
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
                 error_re = re.compile(r"ERROR:", re.I)
                 
+                # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق 
                 regions = ["europe-west12", "us-central1"]
                 
                 for region in regions:
-                    # السطر الواحد لتفادي مشاكل الرجوع للسطر
-                    cmd = f"gcloud run deploy my-app --image=docker.io/nkka404/vless-ws:latest --platform=managed --allow-unauthenticated --port=8080 --cpu=2 --memory=4Gi --concurrency=1000 --timeout=3600 --min-instances=2 --max-instances=7 --execution-environment=gen2 --cpu-boost --region={region}"
-                    
+                    # تعويض اسم المنطقة في القالب
+                    cmd = deploy_cmd_template.replace("{REGION}", region)
                     await paste_command_and_run(page, cmd)
                     
                     y_sent = False
+                    region_success = False
                     
-                    for _ in range(35):
+                    for _ in range(35): # حوالي دقيقة ونصف للمنطقة الواحدة
                         f = await get_cloudshell_frame(page)
                         if not f: continue
                         txt = await f.inner_text("body")
                         
                         if not y_sent and await wait_for_yes_no_prompt(page, timeout_loop=1):
                             await type_short_answer_only(page, "y")
-                            await press_enter_in_terminal(page)
+                            try: await page.keyboard.press("Enter")
+                            except: pass
                             y_sent = True
                         
                         match = url_re.search(txt)
@@ -266,6 +255,7 @@ async def run_automation(lab_url):
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
                             return
                         
+                        # إذا خرج إيرور (مثل عدم توفر مساحة في المنطقة)، يمسح الشاشة ويفوت للمنطقة اللي موراها
                         if error_re.search(txt) and y_sent:
                             await paste_command_and_run(page, "clear")
                             await asyncio.sleep(2)
@@ -275,24 +265,6 @@ async def run_automation(lab_url):
                 
                 raise Exception("فشل الوصول للتيرمنال أو فشل النشر في كلتا المنطقتين.")
 
-        except LoginRequiredError:
-            send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
-            send_log_to_channel(f"#FAILED|{CHAT_ID}") 
-        
-        except Exception as e:
-            send_telegram_msg(CHAT_ID, "❌ <b>حدث خطأ أثناء المعالجة!</b>\nتم إلغاء طلبك، يرجى التأكد من صلاحية الرابط.")
-            send_log_to_channel(f"#FAILED|{CHAT_ID}") 
-            try: 
-                await page.screenshot(path="error.png", full_page=True)
-                send_telegram_photo(ADMIN_ID, "error.png", f"🔴 خطأ لمستخدم {CHAT_ID}:\n{str(e)[:150]}")
-            except: pass
-        finally:
-            await browser.close()
-
-if __name__ == "__main__":
-    url = os.environ.get("LAB_URL")
-    if url: 
-        asyncio.run(run_automation(url))
         except LoginRequiredError:
             send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
             send_log_to_channel(f"#FAILED|{CHAT_ID}") 
