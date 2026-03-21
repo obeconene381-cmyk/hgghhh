@@ -10,6 +10,23 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") 
 LOG_CHANNEL_ID = "-1003781090454" # آيدي قناتك
 
+# قائمة الكلمات التي تدل على الفشل أو قيود المنطقة
+ERROR_INDICATORS = [
+    "error:",
+    "invalid value for [--region]",
+    "permission_denied",
+    "quota exceeded",
+    "quota limit",
+    "unavailable",
+    "failed to create service",
+    "organization policy",
+    "resourcelocations violated",
+    "constraint constraints/gcp.resourcelocations",
+    "deployment failed",
+    "badrequest",
+    "failed_precondition"
+]
+
 def send_telegram_msg(chat_id, text):
     if BOT_TOKEN and chat_id:
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
@@ -95,7 +112,6 @@ async def focus_terminal_near_prompt(page, timeout_loop=60):
         await asyncio.sleep(1)
     return False
 
-# تم استبدال دالة اللصق بالنسخة الموجودة في botlast9 لتفادي الكتابة البطيئة
 async def paste_command_and_run(page, command, timeout_verify=5):
     await focus_terminal_near_prompt(page, timeout_loop=30)
     f = await get_cloudshell_frame(page)
@@ -175,7 +191,6 @@ class LoginRequiredError(Exception): pass
 async def run_automation(lab_url):
     send_telegram_msg(CHAT_ID, "✅ تم بدء العمل في السيرفر، يرجى الانتظار لمدة تتراوح بين 3 إلى 5 دقائق.")
     
-    # القالب الجديد لأمر النشر
     deploy_cmd_template = (
         "gcloud run deploy my-app \\\n"
         "  --image=docker.io/nkka404/vless-ws:latest \\\n"
@@ -225,10 +240,7 @@ async def run_automation(lab_url):
             
             if await wait_for_cloud_shell_prompt(page):
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
-                error_re = re.compile(r"ERROR:", re.I)
                 
-                # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق 
-                # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق كاملة
                 regions = [
                     "europe-west12", 
                     "europe-west1", 
@@ -239,17 +251,19 @@ async def run_automation(lab_url):
                 ]
                 
                 for region in regions:
-                    # تعويض اسم المنطقة في القالب
                     cmd = deploy_cmd_template.replace("{REGION}", region)
                     await paste_command_and_run(page, cmd)
                     
                     y_sent = False
-                    region_success = False
                     
-                    for _ in range(35): # حوالي دقيقة ونصف للمنطقة الواحدة
+                    for _ in range(35):
                         f = await get_cloudshell_frame(page)
-                        if not f: continue
+                        if not f: 
+                            await asyncio.sleep(1)
+                            continue
+                        
                         txt = await f.inner_text("body")
+                        txt_lower = txt.lower() # تحويل النص لحروف صغيرة لتسهيل البحث
                         
                         if not y_sent and await wait_for_yes_no_prompt(page, timeout_loop=1):
                             await type_short_answer_only(page, "y")
@@ -263,15 +277,18 @@ async def run_automation(lab_url):
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
                             return
                         
-                        # إذا خرج إيرور (مثل عدم توفر مساحة في المنطقة)، يمسح الشاشة ويفوت للمنطقة اللي موراها
-                        if error_re.search(txt) and y_sent:
+                        # 🛡️ الفلتر الجديد المعتمد على القائمة الشاملة للأخطاء
+                        has_error = any(indicator in txt_lower for indicator in ERROR_INDICATORS)
+                        
+                        if has_error:
+                            print(f"Failed in {region}, clearing terminal and moving to next...")
                             await paste_command_and_run(page, "clear")
                             await asyncio.sleep(2)
-                            break 
+                            break # يخرج من حلقة المنطقة الحالية لينتقل للتالية فوراً
                             
                         await asyncio.sleep(3)
                 
-                raise Exception("فشل الوصول للتيرمنال أو فشل النشر في كلتا المنطقتين.")
+                raise Exception("فشل الوصول للتيرمنال أو فشل النشر في جميع المناطق.")
 
         except LoginRequiredError:
             send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
