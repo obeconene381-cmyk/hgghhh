@@ -228,7 +228,15 @@ async def run_automation(lab_url):
                 error_re = re.compile(r"ERROR:", re.I)
                 
                 # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق 
-                regions = ["europe-west12", "us-central1"]
+                # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق كاملة
+                regions = [
+                    "europe-west12", 
+                    "europe-west1", 
+                    "europe-west4",
+                    "us-west1",
+                    "us-central1",
+                    "us-east1",
+                ]
                 
                 for region in regions:
                     # تعويض اسم المنطقة في القالب
