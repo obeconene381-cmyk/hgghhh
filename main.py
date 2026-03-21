@@ -7,15 +7,14 @@ from playwright.async_api import async_playwright
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") # توكن البوت المساعد
-LOG_CHANNEL_ID = "-1003781090454" # ⚠️ ضع آيدي القناة هنا
+LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") 
+LOG_CHANNEL_ID = "-1003781090454" # آيدي قناتك
 
 def send_telegram_msg(chat_id, text):
     if BOT_TOKEN and chat_id:
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
 
 def send_log_to_channel(text):
-    """إرسال إشعار فوري للقناة باستخدام البوت المساعد لتحرير الطابور"""
     if LOG_BOT_TOKEN and LOG_CHANNEL_ID:
         requests.post(f"https://api.telegram.org/bot{LOG_BOT_TOKEN}/sendMessage", json={"chat_id": LOG_CHANNEL_ID, "text": text})
 
@@ -25,8 +24,6 @@ def send_telegram_photo(chat_id, photo_path, caption):
             with open(photo_path, "rb") as photo:
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}, files={"photo": photo})
         except: send_telegram_msg(chat_id, caption)
-
-DEPLOY_CMD = "gcloud run deploy my-app --image=docker.io/nkka404/vless-ws:latest --platform=managed --allow-unauthenticated --port=8080 --cpu=2 --memory=4Gi --region=europe-west12"
 
 async def click_button_by_text_anywhere(page, text, exact=True, timeout_loop=120, post_click_wait=3):
     pattern = re.compile(rf"^\s*{re.escape(text)}\s*$", re.I) if exact else re.compile(re.escape(text), re.I)
@@ -156,7 +153,6 @@ async def run_automation(lab_url):
             await page.goto(lab_url, timeout=120000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
-            # الفحص المبكر لصفحة تسجيل الدخول
             if await page.locator("input#identifierId").first.count() > 0 and await page.locator("input#identifierId").first.is_visible(): raise LoginRequiredError()
             if await page.locator("text='Use your Google Account'").first.count() > 0 and await page.locator("text='Use your Google Account'").first.is_visible(): raise LoginRequiredError()
             
@@ -179,39 +175,53 @@ async def run_automation(lab_url):
             await click_button_by_text_anywhere(page, "Authorize", exact=True, timeout_loop=60)
             
             if await wait_for_cloud_shell_prompt(page):
-                await paste_command_and_run(page, DEPLOY_CMD)
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
-                y_sent = False
+                error_re = re.compile(r"ERROR:", re.I)
                 
-                for _ in range(50): 
-                    f = await get_cloudshell_frame(page)
-                    if not f: continue
-                    txt = await f.inner_text("body")
+                # 🛡️ التعديل هنا: تمت إضافة قائمة المناطق 
+                regions = ["europe-west12", "us-central1"]
+                
+                for region in regions:
+                    cmd = f"gcloud run deploy my-app --image=docker.io/nkka404/vless-ws:latest --platform=managed --allow-unauthenticated --port=8080 --cpu=2 --memory=4Gi --region={region}"
+                    await paste_command_and_run(page, cmd)
                     
-                    if not y_sent and await wait_for_yes_no_prompt(page, timeout_loop=1):
-                        await type_short_answer_only(page, "y")
-                        try: await page.keyboard.press("Enter")
-                        except: pass
-                        y_sent = True
+                    y_sent = False
+                    region_success = False
                     
-                    match = url_re.search(txt)
-                    if match:
-                        final_url = match.group(1)
-                        # ✅ إرسال إشعار النجاح الفوري للقناة
-                        send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
-                        return
-                    await asyncio.sleep(3)
-                raise Exception("اكتمل الوقت ولم يظهر الرابط النهائي.")
-            else:
-                raise Exception("فشل الوصول للتيرمنال.")
+                    for _ in range(35): # حوالي دقيقة ونصف للمنطقة الواحدة
+                        f = await get_cloudshell_frame(page)
+                        if not f: continue
+                        txt = await f.inner_text("body")
+                        
+                        if not y_sent and await wait_for_yes_no_prompt(page, timeout_loop=1):
+                            await type_short_answer_only(page, "y")
+                            try: await page.keyboard.press("Enter")
+                            except: pass
+                            y_sent = True
+                        
+                        match = url_re.search(txt)
+                        if match:
+                            final_url = match.group(1)
+                            send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
+                            return
+                        
+                        # إذا خرج إيرور (مثل عدم توفر مساحة في المنطقة)، يمسح الشاشة ويفوت للمنطقة اللي موراها
+                        if error_re.search(txt) and y_sent:
+                            await paste_command_and_run(page, "clear")
+                            await asyncio.sleep(2)
+                            break 
+                            
+                        await asyncio.sleep(3)
+                
+                raise Exception("فشل الوصول للتيرمنال أو فشل النشر في كلتا المنطقتين.")
 
         except LoginRequiredError:
             send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
-            send_log_to_channel(f"#FAILED|{CHAT_ID}") # ❌ إشعار فوري لإنهاء الطابور
+            send_log_to_channel(f"#FAILED|{CHAT_ID}") 
         
         except Exception as e:
             send_telegram_msg(CHAT_ID, "❌ <b>حدث خطأ أثناء المعالجة!</b>\nتم إلغاء طلبك، يرجى التأكد من صلاحية الرابط.")
-            send_log_to_channel(f"#FAILED|{CHAT_ID}") # ❌ إشعار فوري لإنهاء الطابور
+            send_log_to_channel(f"#FAILED|{CHAT_ID}") 
             try: await page.screenshot(path="error.png", full_page=True); send_telegram_photo(ADMIN_ID, "error.png", f"🔴 خطأ لمستخدم {CHAT_ID}:\n{str(e)[:150]}")
             except: pass
         finally:
