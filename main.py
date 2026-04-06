@@ -202,7 +202,7 @@ async def run_automation(lab_url):
         "  --concurrency=1000 \\\n"
         "  --timeout=3600 \\\n"
         "  --min-instances=2 \\\n"
-        "  --max-instances=7 \\\n"
+        "  --max-instances=8 \\\n"
         "  --execution-environment=gen2 \\\n"
         "  --cpu-boost \\\n"
         "  --region={REGION}"
@@ -214,7 +214,8 @@ async def run_automation(lab_url):
         page = await context.new_page()
         
         try:
-            await page.goto(lab_url, timeout=120000, wait_until="domcontentloaded")
+            # تم رفع مهلة الصفحة لـ 10 دقائق لتفادي الإغلاق المبكر
+            await page.goto(lab_url, timeout=600000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
             if await page.locator("input#identifierId").first.count() > 0 and await page.locator("input#identifierId").first.is_visible(): raise LoginRequiredError()
@@ -256,14 +257,15 @@ async def run_automation(lab_url):
                     
                     y_sent = False
                     
-                    for _ in range(35):
+                    # رفع العداد هنا ليصبر 7.5 دقائق (150 * 3 = 450 ثانية)
+                    for _ in range(150):
                         f = await get_cloudshell_frame(page)
                         if not f: 
                             await asyncio.sleep(1)
                             continue
                         
                         txt = await f.inner_text("body")
-                        txt_lower = txt.lower() # تحويل النص لحروف صغيرة لتسهيل البحث
+                        txt_lower = txt.lower()
                         
                         if not y_sent and await wait_for_yes_no_prompt(page, timeout_loop=1):
                             await type_short_answer_only(page, "y")
@@ -277,14 +279,13 @@ async def run_automation(lab_url):
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
                             return
                         
-                        # 🛡️ الفلتر الجديد المعتمد على القائمة الشاملة للأخطاء
                         has_error = any(indicator in txt_lower for indicator in ERROR_INDICATORS)
                         
                         if has_error:
                             print(f"Failed in {region}, clearing terminal and moving to next...")
                             await paste_command_and_run(page, "clear")
                             await asyncio.sleep(2)
-                            break # يخرج من حلقة المنطقة الحالية لينتقل للتالية فوراً
+                            break 
                             
                         await asyncio.sleep(3)
                 
