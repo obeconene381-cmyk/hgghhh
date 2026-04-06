@@ -15,7 +15,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 7 # ⏱️ تم التعديل: إيقاف إجباري بعد 5 دقائق بالضبط
+    timeout-minutes: 15 # ⏱️ تم التعديل: إيقاف إجباري بعد 5 دقائق بالضبط
 
     steps:
       - name: Checkout Code
