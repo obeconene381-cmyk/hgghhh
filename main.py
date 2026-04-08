@@ -20,10 +20,11 @@ ERROR_INDICATORS = [
 ]
 
 # ---------------------------------------------------------
-# دالة تحديث كلاود فلير (تشتغل فقط للأدمن)
+# دالة تحديث كلاود فلير (النسخة المحدثة التي ترجع سبب الخطأ)
 # ---------------------------------------------------------
 def update_cloudflare_worker(new_gcp_url):
     CF_ACCOUNT_ID = "e66f9daaf04a57789345976693dfaa94"
+    # تأكد من أن التوكن صحيح 100% (انتبه لحالة الأحرف الكبيرة والصغيرة)
     CF_API_TOKEN = "cfat_g0yDmvVp1nZZQ6DeARFRg4jWtIZxPANp0usU1y3Zf0c563cd"
     WORKER_NAME = "wild-limit-6d0c"
 
@@ -33,27 +34,37 @@ def update_cloudflare_worker(new_gcp_url):
         "Content-Type": "application/javascript"
     }
 
+    # استخدام صيغة Service Worker المقبولة 100% للرفع المباشر
     worker_script = f"""
-    export default {{
-      async fetch(request) {{
-        const url = new URL(request.url);
-        if (url.pathname !== "/omarero-2026") {{
-          return new Response("Unauthorized", {{ status: 403 }});
-        }}
-        const TARGET = "{new_gcp_url.replace('https://', '').replace('http://', '')}";
-        url.hostname = TARGET;
-        url.pathname = "/"; 
-        const newRequest = new Request(url, request);
-        newRequest.headers.set('Host', TARGET);
-        return fetch(newRequest);
+    addEventListener('fetch', event => {{
+      event.respondWith(handleRequest(event.request))
+    }})
+
+    async function handleRequest(request) {{
+      const url = new URL(request.url);
+      
+      if (url.pathname !== "/omarero-2026") {{
+        return new Response("Unauthorized", {{ status: 403 }});
       }}
+      
+      const TARGET = "{new_gcp_url.replace('https://', '').replace('http://', '')}";
+      url.hostname = TARGET;
+      url.pathname = "/"; 
+      
+      const newRequest = new Request(url, request);
+      newRequest.headers.set('Host', TARGET);
+      
+      return fetch(newRequest);
     }}
     """
     try:
-        res = requests.put(url, headers=headers, data=worker_script)
-        return res.status_code == 200
-    except:
-        return False
+        res = requests.put(url, headers=headers, data=worker_script.encode('utf-8'))
+        if res.status_code == 200:
+            return True, "تم"
+        else:
+            return False, res.text # إرجاع سبب الخطأ من كلاود فلير
+    except Exception as e:
+        return False, str(e)
 # ---------------------------------------------------------
 
 def send_telegram_msg(chat_id, text):
@@ -300,16 +311,15 @@ async def run_automation(lab_url):
                         if match:
                             final_url = match.group(1)
                             
-                            # 🌟 هنا السحر تاع التمييز 🌟
-                            # إذا كان اللي طلب الرابط هو الأدمن (أنت)
+                            # 🌟 التمييز وطباعة سبب الخطأ 🌟
                             if str(CHAT_ID) == str(ADMIN_ID):
-                                success = update_cloudflare_worker(final_url)
+                                success, error_msg = update_cloudflare_worker(final_url)
                                 if success:
                                     send_telegram_msg(CHAT_ID, f"✅ <b>تم تحديث Cloudflare بنجاح!</b>\nالرابط الجديد:\n<code>{final_url}</code>")
                                 else:
-                                    send_telegram_msg(CHAT_ID, f"❌ <b>فشل تحديث Cloudflare!</b>\nالرابط:\n<code>{final_url}</code>")
+                                    # سيتم إرسال سبب الخطأ الدقيق من Cloudflare
+                                    send_telegram_msg(CHAT_ID, f"❌ <b>فشل تحديث Cloudflare!</b>\n\n<b>سبب الخطأ:</b>\n<code>{error_msg[:300]}</code>\n\nالرابط:\n<code>{final_url}</code>")
                             
-                            # في كل الحالات (سواء كنت أنت أو مستخدم عادي)، نرسل للمجموعة باش تخدم ملف .dark
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
                             return
                         
