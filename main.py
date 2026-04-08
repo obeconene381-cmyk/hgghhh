@@ -12,20 +12,49 @@ LOG_CHANNEL_ID = "-1003781090454" # آيدي قناتك
 
 # قائمة الكلمات التي تدل على الفشل أو قيود المنطقة
 ERROR_INDICATORS = [
-    "error:",
-    "invalid value for [--region]",
-    "permission_denied",
-    "quota exceeded",
-    "quota limit",
-    "unavailable",
-    "failed to create service",
-    "organization policy",
-    "resourcelocations violated",
-    "constraint constraints/gcp.resourcelocations",
-    "deployment failed",
-    "badrequest",
-    "failed_precondition"
+    "error:", "invalid value for [--region]", "permission_denied",
+    "quota exceeded", "quota limit", "unavailable", "failed to create service",
+    "organization policy", "resourcelocations violated", 
+    "constraint constraints/gcp.resourcelocations", "deployment failed",
+    "badrequest", "failed_precondition"
 ]
+
+# ---------------------------------------------------------
+# دالة تحديث كلاود فلير (تشتغل فقط للأدمن)
+# ---------------------------------------------------------
+def update_cloudflare_worker(new_gcp_url):
+    CF_ACCOUNT_ID = "e66f9daaf04a57789345976693dfaa94"
+    CF_API_TOKEN = "cfat_g0yDmvVp1nZZQ6DeARFRg4jWtIZxPANp0usU1y3Zf0c563cd"
+    WORKER_NAME = "wild-limit-6d0c"
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/workers/scripts/{WORKER_NAME}"
+    headers = {
+        "Authorization": f"Bearer {CF_API_TOKEN}",
+        "Content-Type": "application/javascript"
+    }
+
+    worker_script = f"""
+    export default {{
+      async fetch(request) {{
+        const url = new URL(request.url);
+        if (url.pathname !== "/omarero-2026") {{
+          return new Response("Unauthorized", {{ status: 403 }});
+        }}
+        const TARGET = "{new_gcp_url.replace('https://', '').replace('http://', '')}";
+        url.hostname = TARGET;
+        url.pathname = "/"; 
+        const newRequest = new Request(url, request);
+        newRequest.headers.set('Host', TARGET);
+        return fetch(newRequest);
+      }}
+    }}
+    """
+    try:
+        res = requests.put(url, headers=headers, data=worker_script)
+        return res.status_code == 200
+    except:
+        return False
+# ---------------------------------------------------------
 
 def send_telegram_msg(chat_id, text):
     if BOT_TOKEN and chat_id:
@@ -214,7 +243,6 @@ async def run_automation(lab_url):
         page = await context.new_page()
         
         try:
-            # تم رفع مهلة الصفحة لـ 10 دقائق لتفادي الإغلاق المبكر
             await page.goto(lab_url, timeout=600000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
@@ -243,12 +271,8 @@ async def run_automation(lab_url):
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
                 
                 regions = [
-                    "europe-west12", 
-                    "europe-west1", 
-                    "europe-west4",
-                    "us-west1",
-                    "us-central1",
-                    "us-east1",
+                    "europe-west12", "europe-west1", "europe-west4",
+                    "us-west1", "us-central1", "us-east1",
                 ]
                 
                 for region in regions:
@@ -257,7 +281,6 @@ async def run_automation(lab_url):
                     
                     y_sent = False
                     
-                    # رفع العداد هنا ليصبر 7.5 دقائق (150 * 3 = 450 ثانية)
                     for _ in range(150):
                         f = await get_cloudshell_frame(page)
                         if not f: 
@@ -276,6 +299,17 @@ async def run_automation(lab_url):
                         match = url_re.search(txt)
                         if match:
                             final_url = match.group(1)
+                            
+                            # 🌟 هنا السحر تاع التمييز 🌟
+                            # إذا كان اللي طلب الرابط هو الأدمن (أنت)
+                            if str(CHAT_ID) == str(ADMIN_ID):
+                                success = update_cloudflare_worker(final_url)
+                                if success:
+                                    send_telegram_msg(CHAT_ID, f"✅ <b>تم تحديث Cloudflare بنجاح!</b>\nالرابط الجديد:\n<code>{final_url}</code>")
+                                else:
+                                    send_telegram_msg(CHAT_ID, f"❌ <b>فشل تحديث Cloudflare!</b>\nالرابط:\n<code>{final_url}</code>")
+                            
+                            # في كل الحالات (سواء كنت أنت أو مستخدم عادي)، نرسل للمجموعة باش تخدم ملف .dark
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
                             return
                         
