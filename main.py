@@ -24,17 +24,15 @@ ERROR_INDICATORS = [
 # ---------------------------------------------------------
 def update_cloudflare_worker(new_gcp_url):
     CF_ACCOUNT_ID = "e66f9daaf04a57789345976693dfaa94"
-    # تأكد من أن التوكن صحيح 100% (انتبه لحالة الأحرف الكبيرة والصغيرة)
     CF_API_TOKEN = "cfat_g0yDmvVp1nZZQ6DeARFRg4jWtIZxPANp0usU1y3Zf0c563cd"
     WORKER_NAME = "wild-limit-6d0c"
 
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/workers/scripts/{WORKER_NAME}"
-    headers = {
-        "Authorization": f"Bearer {CF_API_TOKEN}",
-        "Content-Type": "application/javascript"
-    }
+    # تنظيف الرابط من https:// ومن أي سلاش في الطرف
+    clean_url = new_gcp_url.replace("https://", "").replace("http://", "").strip("/")
 
-    # استخدام صيغة Service Worker المقبولة 100% للرفع المباشر
+    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/workers/scripts/{WORKER_NAME}"
+    headers = { "Authorization": f"Bearer {CF_API_TOKEN}", "Content-Type": "application/javascript" }
+
     worker_script = f"""
     addEventListener('fetch', event => {{
       event.respondWith(handleRequest(event.request))
@@ -42,29 +40,24 @@ def update_cloudflare_worker(new_gcp_url):
 
     async function handleRequest(request) {{
       const url = new URL(request.url);
-      
       if (url.pathname !== "/omarero-2026") {{
         return new Response("Unauthorized", {{ status: 403 }});
       }}
-      
-      const TARGET = "{new_gcp_url.replace('https://', '').replace('http://', '')}";
+      const TARGET = "{clean_url}";
       url.hostname = TARGET;
-      url.pathname = "/"; 
+      url.pathname = "/@nkka404"; 
       
       const newRequest = new Request(url, request);
       newRequest.headers.set('Host', TARGET);
-      
       return fetch(newRequest);
     }}
     """
     try:
         res = requests.put(url, headers=headers, data=worker_script.encode('utf-8'))
-        if res.status_code == 200:
-            return True, "تم"
-        else:
-            return False, res.text # إرجاع سبب الخطأ من كلاود فلير
+        return res.status_code == 200, res.text
     except Exception as e:
         return False, str(e)
+
 # ---------------------------------------------------------
 
 def send_telegram_msg(chat_id, text):
