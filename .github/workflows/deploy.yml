@@ -1,18 +1,21 @@
-name: Google Skills Automation
+name: Auto VLESS Deploy
 
 on:
   workflow_dispatch:
     inputs:
       lab_url:
-        description: 'رابط اللاب (Google Skills)'
+        description: 'Qwiklabs URL'
         required: true
         type: string
-        default: 'https://www.skills.google/focuses/19146?parent=catalog'
+      chat_id:
+        description: 'Telegram Chat ID'
+        required: true
+        type: string
 
 jobs:
-  run-automation:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 15 # ⏱️ تم التعديل: إيقاف إجباري بعد 5 دقائق بالضبط
 
     steps:
       - name: Checkout Code
@@ -25,18 +28,16 @@ jobs:
 
       - name: Install Requirements
         run: |
+          python -m pip install --upgrade pip
           pip install playwright requests
           playwright install chromium --with-deps
-
-      - name: Download Buster Extension
-        run: |
-          if [ ! -f "buster-main.zip" ]; then
-            wget -q -O buster-main.zip https://github.com/dessant/buster/archive/refs/heads/main.zip
-          fi
 
       - name: Run Playwright Script
         env:
           LAB_URL: ${{ github.event.inputs.lab_url }}
+          TELEGRAM_CHAT_ID: ${{ github.event.inputs.chat_id }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          LOG_BOT_TOKEN: ${{ secrets.LOG_BOT_TOKEN }}
+
         run: python main.py
