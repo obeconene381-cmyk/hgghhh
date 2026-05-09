@@ -7,10 +7,10 @@ from playwright.async_api import async_playwright
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+REGION_OVERRIDE = os.environ.get("REGION_OVERRIDE", "")  # منطقة محددة (فارغ = تجربة متعددة)
 LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") 
-LOG_CHANNEL_ID = "-1003781090454" # آيدي قناتك
+LOG_CHANNEL_ID = "-1003781090454"
 
-# قائمة الكلمات التي تدل على الفشل أو قيود المنطقة
 ERROR_INDICATORS = [
     "error:",
     "invalid value for [--region]",
@@ -189,7 +189,7 @@ async def type_short_answer_only(page, answer_text="y"):
 class LoginRequiredError(Exception): pass
 
 async def run_automation(lab_url):
-    send_telegram_msg(CHAT_ID, "✅ تم بدء العمل في السيرفر، يرجى الانتظار لمدة تتراوح بين 3 إلى 5 دقائق.")
+    send_telegram_msg(CHAT_ID, "✅ تم بدء العمل في السيرفر، يرجى الانتظار...")
     
     deploy_cmd_template = (
         "gcloud run deploy my-app \\\n"
@@ -208,13 +208,32 @@ async def run_automation(lab_url):
         "  --region={REGION}"
     )
     
+    # إذا كان هناك منطقة محددة، استخدمها فقط مع وقت انتظار 4 دقائق
+    # وإلا جرب المناطق الافتراضية بالوقت الأصلي
+    if REGION_OVERRIDE:
+        regions = [REGION_OVERRIDE]
+        # وقت الانتظار للمنطقة المحددة: 4 دقائق = 240 ثانية ÷ 3 ثوان = 80 دورة
+        deploy_wait_loops = 80
+        is_region_specific = True
+    else:
+        regions = [
+            "europe-west12",
+            "europe-west1",
+            "europe-west4",
+            "us-west1",
+            "us-central1",
+            "us-east1",
+        ]
+        # الوقت الأصلي: 7.5 دقائق = 150 دورة
+        deploy_wait_loops = 150
+        is_region_specific = False
+    
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--lang=en-US", "--no-sandbox", "--disable-gpu"])
         context = await browser.new_context(locale="en-US", viewport={'width': 1280, 'height': 720})
         page = await context.new_page()
         
         try:
-            # تم رفع مهلة الصفحة لـ 10 دقائق لتفادي الإغلاق المبكر
             await page.goto(lab_url, timeout=600000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
@@ -242,23 +261,13 @@ async def run_automation(lab_url):
             if await wait_for_cloud_shell_prompt(page):
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
                 
-                regions = [
-                    "europe-west12", 
-                    "europe-west1", 
-                    "europe-west4",
-                    "us-west1",
-                    "us-central1",
-                    "us-east1",
-                ]
-                
                 for region in regions:
                     cmd = deploy_cmd_template.replace("{REGION}", region)
                     await paste_command_and_run(page, cmd)
                     
                     y_sent = False
                     
-                    # رفع العداد هنا ليصبر 7.5 دقائق (150 * 3 = 450 ثانية)
-                    for _ in range(150):
+                    for _ in range(deploy_wait_loops):
                         f = await get_cloudshell_frame(page)
                         if not f: 
                             await asyncio.sleep(1)
@@ -282,14 +291,15 @@ async def run_automation(lab_url):
                         has_error = any(indicator in txt_lower for indicator in ERROR_INDICATORS)
                         
                         if has_error:
-                            print(f"Failed in {region}, clearing terminal and moving to next...")
+                            print(f"Failed in {region}, moving to next...")
                             await paste_command_and_run(page, "clear")
                             await asyncio.sleep(2)
                             break 
                             
                         await asyncio.sleep(3)
                 
-                raise Exception("فشل الوصول للتيرمنال أو فشل النشر في جميع المناطق.")
+                # فشل في جميع المناطق
+                raise Exception("فشل النشر في المنطقة المطلوبة أو جميع المناطق.")
 
         except LoginRequiredError:
             send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
