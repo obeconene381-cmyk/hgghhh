@@ -42,4 +42,4 @@ jobs:
           LOG_BOT_TOKEN: ${{ secrets.LOG_BOT_TOKEN }}
           LAB_URL: ${{ github.event.inputs.lab_url }}
           REGION_OVERRIDE: ${{ github.event.inputs.region }}
-        run: python automation.py
+        run: python main.py
