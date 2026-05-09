@@ -7,7 +7,7 @@ from playwright.async_api import async_playwright
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-REGION_OVERRIDE = os.environ.get("REGION_OVERRIDE", "")  # منطقة محددة (فارغ = تجربة متعددة)
+REGION_OVERRIDE = os.environ.get("REGION_OVERRIDE", "")  
 LOG_BOT_TOKEN = os.environ.get("LOG_BOT_TOKEN") 
 LOG_CHANNEL_ID = "-1003781090454"
 
@@ -163,7 +163,7 @@ async def paste_command_and_run(page, command, timeout_verify=5):
     except Exception:
         return False
 
-async def wait_for_yes_no_prompt(page, timeout_loop=120):
+async def wait_for_yes_no_prompt(page, timeout_loop=3):
     patterns = [r"\[y\/n\]", r"\(y\/n\)", r"\[y\/N\]", r"Do you want to continue", r"continue\?\s*$"]
     for _ in range(timeout_loop):
         f = await get_cloudshell_frame(page)
@@ -208,13 +208,8 @@ async def run_automation(lab_url):
         "  --region={REGION}"
     )
     
-    # إذا كان هناك منطقة محددة، استخدمها فقط مع وقت انتظار 4 دقائق
-    # وإلا جرب المناطق الافتراضية بالوقت الأصلي
-    if REGION_OVERRIDE:
-        regions = [REGION_OVERRIDE]
-        # وقت الانتظار للمنطقة المحددة: 4 دقائق = 240 ثانية ÷ 3 ثوان = 80 دورة
-        deploy_wait_loops = 80
-        is_region_specific = True
+    if REGION_OVERRIDE and REGION_OVERRIDE.strip():
+        regions = [REGION_OVERRIDE.strip()]
     else:
         regions = [
             "europe-west12",
@@ -224,9 +219,9 @@ async def run_automation(lab_url):
             "us-central1",
             "us-east1",
         ]
-        # الوقت الأصلي: 7.5 دقائق = 150 دورة
-        deploy_wait_loops = 150
-        is_region_specific = False
+    
+    # تحديد مدة دقيقة واحدة تقريبا للمنطقة (20 دورة × 3 ثواني = 60 ثانية)
+    deploy_wait_loops = 20
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--lang=en-US", "--no-sandbox", "--disable-gpu"])
@@ -234,7 +229,7 @@ async def run_automation(lab_url):
         page = await context.new_page()
         
         try:
-            await page.goto(lab_url, timeout=600000, wait_until="domcontentloaded")
+            await page.goto(lab_url, timeout=300000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             
             if await page.locator("input#identifierId").first.count() > 0 and await page.locator("input#identifierId").first.is_visible(): raise LoginRequiredError()
@@ -262,15 +257,24 @@ async def run_automation(lab_url):
                 url_re = re.compile(r"Service URL:\s*(https://[a-zA-Z0-9.-]+\.run\.app)", re.I)
                 
                 for region in regions:
+                    # تفريغ الشاشة ووقف أي عملية سابقة لضمان عدم تداخل الأخطاء (Phantom Errors)
+                    try:
+                        await focus_terminal_near_prompt(page, timeout_loop=5)
+                        await page.keyboard.press("Control+C")
+                        await asyncio.sleep(1)
+                        await paste_command_and_run(page, "clear")
+                        await asyncio.sleep(2)
+                    except: pass
+
                     cmd = deploy_cmd_template.replace("{REGION}", region)
                     await paste_command_and_run(page, cmd)
                     
                     y_sent = False
                     
-                    for _ in range(deploy_wait_loops):
+                    for step in range(deploy_wait_loops):
                         f = await get_cloudshell_frame(page)
                         if not f: 
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(3)
                             continue
                         
                         txt = await f.inner_text("body")
@@ -282,33 +286,41 @@ async def run_automation(lab_url):
                             except: pass
                             y_sent = True
                         
+                        # التحقق من النجاح
                         match = url_re.search(txt)
                         if match:
                             final_url = match.group(1)
                             send_log_to_channel(f"#DONE|{CHAT_ID}|{final_url}")
+                            send_telegram_msg(CHAT_ID, f"🎉 <b>تم النشر بنجاح!</b>\nالرابط: <code>{final_url}</code>\nالمنطقة: {region}")
                             return
                         
+                        # التحقق من الأخطاء
                         has_error = any(indicator in txt_lower for indicator in ERROR_INDICATORS)
-                        
                         if has_error:
                             print(f"Failed in {region}, moving to next...")
-                            await paste_command_and_run(page, "clear")
-                            await asyncio.sleep(2)
-                            break 
+                            break # الخروج من اللوب الحالي للذهاب مباشرة للمنطقة التالية
                             
                         await asyncio.sleep(3)
                 
-                # فشل في جميع المناطق
-                raise Exception("فشل النشر في المنطقة المطلوبة أو جميع المناطق.")
+                # إذا جرب كل المناطق وانتهى اللوب بدون `return` يعني أنه فشل
+                raise Exception("انتهت المحاولات: فشل النشر في المنطقة المطلوبة أو في جميع المناطق المتاحة.")
 
         except LoginRequiredError:
             send_telegram_msg(CHAT_ID, "⚠️ <b>الرابط منتهي ويطلب تسجيل الدخول!</b>\nتم إلغاء طلبك، يمكنك المحاولة برابط جديد.")
             send_log_to_channel(f"#FAILED|{CHAT_ID}") 
         
         except Exception as e:
-            send_telegram_msg(CHAT_ID, "❌ <b>حدث خطأ أثناء المعالجة!</b>\nتم إلغاء طلبك، يرجى التأكد من صلاحية الرابط.")
+            error_msg = str(e)
+            send_telegram_msg(CHAT_ID, "❌ <b>حدث خطأ أثناء المعالجة أو فشل النشر!</b>\nتم إلغاء طلبك، انظر الصورة المرفقة لمعرفة السبب.")
             send_log_to_channel(f"#FAILED|{CHAT_ID}") 
-            try: await page.screenshot(path="error.png", full_page=True); send_telegram_photo(ADMIN_ID, "error.png", f"🔴 خطأ لمستخدم {CHAT_ID}:\n{str(e)[:150]}")
+            try: 
+                # التقاط صورة وإرسالها للمستخدم مباشرة وللأدمن
+                await page.screenshot(path="error.png", full_page=True)
+                send_telegram_photo(CHAT_ID, "error.png", f"🔴 لقطة شاشة للخطأ:\n<code>{error_msg[:150]}</code>")
+                
+                # إرسال نسخة للأدمن إذا كان غير المستخدم الحالي
+                if ADMIN_ID and str(ADMIN_ID) != str(CHAT_ID):
+                    send_telegram_photo(ADMIN_ID, "error.png", f"🔴 خطأ لمستخدم {CHAT_ID}:\n{error_msg[:150]}")
             except: pass
         finally:
             await browser.close()
