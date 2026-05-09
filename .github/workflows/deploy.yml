@@ -1,43 +1,45 @@
-name: Auto VLESS Deploy
+name: Deploy Lab
 
 on:
   workflow_dispatch:
     inputs:
       lab_url:
-        description: 'Qwiklabs URL'
+        description: 'Lab URL'
         required: true
-        type: string
       chat_id:
         description: 'Telegram Chat ID'
         required: true
-        type: string
+      region:
+        description: 'Specific region (leave empty for multi-region)'
+        required: false
+        default: ''
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # ⏱️ تم التعديل: إيقاف إجباري بعد 5 دقائق بالضبط
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Install Requirements
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install playwright requests
-          playwright install chromium --with-deps
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run Playwright Script
+      - name: Run automation
         env:
-          LAB_URL: ${{ github.event.inputs.lab_url }}
-          TELEGRAM_CHAT_ID: ${{ github.event.inputs.chat_id }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          TELEGRAM_CHAT_ID: ${{ github.event.inputs.chat_id }}
           LOG_BOT_TOKEN: ${{ secrets.LOG_BOT_TOKEN }}
-
-        run: python main.py
+          LAB_URL: ${{ github.event.inputs.lab_url }}
+          REGION_OVERRIDE: ${{ github.event.inputs.region }}
+        run: python automation.py
