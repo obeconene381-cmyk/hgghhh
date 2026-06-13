@@ -191,22 +191,25 @@ class LoginRequiredError(Exception): pass
 async def run_automation(lab_url):
     send_telegram_msg(CHAT_ID, "✅ تم بدء العمل في السيرفر، يرجى الانتظار...")
     
+    
     deploy_cmd_template = (
-        "gcloud run deploy my-app \\\n"
-        "  --image=docker.io/nkka404/vless-ws:latest \\\n"
-        "  --platform=managed \\\n"
-        "  --allow-unauthenticated \\\n"
-        "  --port=8080 \\\n"
-        "  --cpu=2 \\\n"
-        "  --memory=4Gi \\\n"
-        "  --concurrency=1000 \\\n"
-        "  --timeout=3600 \\\n"
-        "  --min-instances=2 \\\n"
-        "  --max-instances=8 \\\n"
-        "  --execution-environment=gen2 \\\n"
-        "  --cpu-boost \\\n"
-        "  --region={REGION}"
-    )
+    "gcloud run deploy my-app \\\n"
+    "  --project=$DEVSHELL_PROJECT_ID \\\n"  # أضف هذا السطر
+    "  --image=docker.io/nkka404/vless-ws:latest \\\n"
+    "  --platform=managed \\\n"
+    "  --allow-unauthenticated \\\n"
+    "  --port=8080 \\\n"
+    "  --cpu=2 \\\n"
+    "  --memory=4Gi \\\n"
+    "  --concurrency=1000 \\\n"
+    "  --timeout=3600 \\\n"
+    "  --min-instances=2 \\\n"
+    "  --max-instances=8 \\\n"
+    "  --execution-environment=gen2 \\\n"
+    "  --cpu-boost \\\n"
+    "  --region={REGION}"
+)
+
     
     if REGION_OVERRIDE and REGION_OVERRIDE.strip():
         regions = [REGION_OVERRIDE.strip()]
